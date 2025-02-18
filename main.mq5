@@ -20,19 +20,23 @@ void SetChartAppearance() {
     ChartSetInteger(0, CHART_COLOR_CHART_LINE, clrBlack);           // Line chart color
 }
 
-enum MarketState {
+enum TimeState {
     STATE_OUTSIDE_TIME = 0,     // Outside trading time window
     STATE_IN_TIME = 1,          // Within trading time window
-    STATE_TRADE_TIME = 2,       // Within trade execution time window
-    STATE_TAKE_LIQUIDITY_A = 3, // Taking liquidity at level A
-    STATE_TAKE_LIQUIDITY_B = 4, // Taking liquidity at level B 
-    STATE_CHOCH_BULLISH = 5,    // Bullish Change of Character detected
-    STATE_CHOCH_BEARISH = 6,    // Bearish Change of Character detected
-    STATE_ORDERBLOCK_BULLISH = 7, // Bullish Order Block detected
-    STATE_ORDERBLOCK_BEARISH = 8  // Bearish Order Block detected
+    STATE_TRADE_TIME = 2        // Within trade execution time window
 };
 
-string GetStateText(MarketState state) {
+enum MarketActionState {
+    STATE_TAKE_LIQUIDITY_A = 0, // Taking liquidity at level A
+    STATE_TAKE_LIQUIDITY_B = 1, // Taking liquidity at level B 
+    STATE_CHOCH_BULLISH = 2,    // Bullish Change of Character detected
+    STATE_CHOCH_BEARISH = 3,    // Bearish Change of Character detected
+    STATE_ORDERBLOCK_BULLISH = 4, // Bullish Order Block detected
+    STATE_ORDERBLOCK_BEARISH = 5,  // Bearish Order Block detected
+    STATE_NOTHING = 6             // No significant market action detected
+};
+
+string GetTimeStateText(TimeState state) {
     string stateText;
     switch(state) {
         case STATE_IN_TIME:
@@ -44,6 +48,15 @@ string GetStateText(MarketState state) {
         case STATE_TRADE_TIME:
             stateText = "Ready to Execute";
             break;
+        default:
+            stateText = "Unknown Time State";
+    }
+    return stateText;
+}
+
+string GetMarketActionStateText(MarketActionState state) {
+    string stateText;
+    switch(state) {
         case STATE_TAKE_LIQUIDITY_A:
             stateText = "Taking Liquidity at Level A";
             break;
@@ -63,13 +76,15 @@ string GetStateText(MarketState state) {
             stateText = "Bearish OB Detected";
             break;
         default:
-            stateText = "Unknown State";
+            stateText = "Unknown Market Action State";
     }
     return stateText;
 }
 
-// Current market state
-MarketState currentState = STATE_OUTSIDE_TIME;
+// Current time state
+TimeState currentTimeState = STATE_OUTSIDE_TIME;
+// Current market action state
+MarketActionState currentState = STATE_NOTHING;
 
 double ASIA_High = 0;
 double ASIA_Low = 0;
@@ -242,15 +257,15 @@ void HighlightTimeRange() {
     tempTime.min = 0;
     datetime endTime = StructToTime(tempTime);
 
-    // Update market state based on time ranges
+    // Update market state based on time ranges using timeState
     if(TimeCurrent() >= start1Time && TimeCurrent() <= end1Time)
-        currentState = STATE_TRADE_TIME;
+        currentTimeState = STATE_TRADE_TIME;
     else if(TimeCurrent() >= start2Time && TimeCurrent() <= end2Time)
-        currentState = STATE_TRADE_TIME;
+        currentTimeState = STATE_TRADE_TIME;
     else if(TimeCurrent() >= startTime && TimeCurrent() <= endTime)
-        currentState = STATE_IN_TIME;
+        currentTimeState = STATE_IN_TIME;
     else
-        currentState = STATE_OUTSIDE_TIME;
+        currentTimeState = STATE_OUTSIDE_TIME;
 
     string highlightName = "TimeHighlight_main" + "_" + IntegerToString(tempTime.day);  
     if(ObjectCreate(0, highlightName, OBJ_RECTANGLE, 0, startTime, 1.9, endTime, 1)) {
@@ -295,10 +310,10 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
         tempTime.hour = END_HOUR;
         datetime endTime = StructToTime(tempTime);
 
-        ASIA_high = GetHighestPriceInRange(startTime, endTime);
-        ASIA_low = GetLowestPriceInRange(startTime, endTime);
+        ASIA_High = GetHighestPriceInRange(startTime, endTime);
+        ASIA_Low = GetLowestPriceInRange(startTime, endTime);
 
-        if(highestPrice != -1 && lowestPrice != -1) {
+        if(ASIA_High != -1 && ASIA_Low != -1) {
             tempTime.hour = LINE_END_HOUR;
             datetime lineEndTime = StructToTime(tempTime);
 
@@ -307,11 +322,11 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
             // Create high line
             string highObjName = "DailyHigh_" + time2String;
             string highObjNameDesc = highObjName + "txt";
-            if(ObjectCreate(0, highObjName, OBJ_TREND, 0, endTime, ASIA_high, lineEndTime, ASIA_high)) {
+            if(ObjectCreate(0, highObjName, OBJ_TREND, 0, endTime, ASIA_High, lineEndTime, ASIA_High)) {
                 ObjectSetInteger(0, highObjName, OBJPROP_COLOR, clrBlack);
                 ObjectSetInteger(0, highObjName, OBJPROP_WIDTH, 2);
                 ObjectSetInteger(0, highObjName, OBJPROP_STYLE, STYLE_SOLID);
-                if(ObjectCreate(0, highObjNameDesc, OBJ_TEXT, 0, endTime, ASIA_high)){
+                if(ObjectCreate(0, highObjNameDesc, OBJ_TEXT, 0, endTime, ASIA_High)){
                     ObjectSetString(0, highObjNameDesc, OBJPROP_TEXT, "Asia High");
                     ObjectSetInteger(0, highObjNameDesc, OBJPROP_COLOR, clrBlack);
                 }
@@ -320,17 +335,17 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
             // Create low line
             string lowObjName = "DailyLow_" + time2String;
             string lowObjNameDesc = lowObjName + "txt";
-            if(ObjectCreate(0, lowObjName, OBJ_TREND, 0, endTime, ASIA_low, lineEndTime, ASIA_low)) {
+            if(ObjectCreate(0, lowObjName, OBJ_TREND, 0, endTime, ASIA_Low, lineEndTime, ASIA_Low)) {
                 ObjectSetInteger(0, lowObjName, OBJPROP_COLOR, clrBlack);
                 ObjectSetInteger(0, lowObjName, OBJPROP_WIDTH, 2);
                 ObjectSetInteger(0, lowObjName, OBJPROP_STYLE, STYLE_SOLID);
-                if(ObjectCreate(0, lowObjNameDesc, OBJ_TEXT, 0, endTime, ASIA_low)){
+                if(ObjectCreate(0, lowObjNameDesc, OBJ_TEXT, 0, endTime, ASIA_Low)){
                     ObjectSetString(0, lowObjNameDesc, OBJPROP_TEXT, "Asia Low");
                     ObjectSetInteger(0, lowObjNameDesc, OBJPROP_COLOR, clrBlack);
                 }
             }
             
-            Print("Price range between ", START_HOUR, ":00 and ", END_HOUR, ":00 - High: ", ASIA_high, " Low: ", ASIA_low);
+            Print("Price range between ", START_HOUR, ":00 and ", END_HOUR, ":00 - High: ", ASIA_High, " Low: ", ASIA_Low);
         }
         // Update the previous date
         previousDateStruct = currentDateStruct;
@@ -357,26 +372,30 @@ void OnTick() {
     bool isOrderBlockBearish = (isOrderBlock == 1);
     
     // Update state based on ChoCh and OrderBlock conditions
-    if(currentState == STATE_IN_TIME) {
+    if(currentTimeState == STATE_IN_TIME) {
         if (A_value < ASIA_Low)
             currentState = STATE_TAKE_LIQUIDITY_A;
         if (B_value > ASIA_High)
             currentState = STATE_TAKE_LIQUIDITY_B;
     }
 
+    if (currentTimeState == STATE_OUTSIDE_TIME)
+        currentState = STATE_NOTHING;
+    
+
     if (ArraySize(HighsTime) > 0 && ArraySize(LowsTime) > 0 && ArraySize(Highs) > 0 && ArraySize(Lows) > 0) {
         //CHOCh
         //Bullish
         if(rates[1].close > B_value && rates[2].close < B_value && B_time != lastBuTime) {
             if (currentState == STATE_CHOCH_BEARISH)
-                currentState = STATE_CHOCH_BULLISH
+                currentState = STATE_CHOCH_BULLISH;
             lastBuTime = B_time;
             buValue = B_value;
         }
         //Bearish  
         if(rates[1].low < A_value && rates[2].close > A_value && A_time != lastBeTime) {
             if (currentState == STATE_TAKE_LIQUIDITY_B)
-                currentState = STATE_CHOCH_BEARISH
+                currentState = STATE_CHOCH_BEARISH;
             lastBeTime = A_time;
             beValue = A_value;
         }
@@ -413,32 +432,28 @@ void OnTick() {
         }
     }
 
-    if (currentState == STATE_CHOCH_BULLISH){
-        if (isOrderBLockBearish) {
-            double entryprice = rates[1].close;
-            entryprice = NormalizeDouble(entryprice,_Digits);
+    if (currentState == STATE_CHOCH_BULLISH && currentTimeState == STATE_TRADE_TIME && isOrderBlockBearish) {
+        double entryprice = rates[1].close;
+        entryprice = NormalizeDouble(entryprice,_Digits);
 
-            double stoploss = Highs[1];
-            stoploss = NormalizeDouble(stoploss,_Digits);
+        double stoploss = Highs[1];
+        stoploss = NormalizeDouble(stoploss,_Digits);
 
-            double riskvalue = stoploss - entryprice;
-            riskvalue = NormalizeDouble(riskvalue,_Digits);
+        double riskvalue = stoploss - entryprice;
+        riskvalue = NormalizeDouble(riskvalue,_Digits);
 
-            double takeprofit = entryprice - (risk2reward * riskvalue);
-            takeprofit = NormalizeDouble(takeprofit,_Digits);
+        double takeprofit = entryprice - (risk2reward * riskvalue);
+        takeprofit = NormalizeDouble(takeprofit,_Digits);
 
-            string sellName = "Sell@" + TimeToString(rates[1].time);
-            if(ObjectCreate(0, sellName, OBJ_ARROW, 0, rates[1].time, rates[1].close)) {
-                ObjectSetInteger(0, sellName, OBJPROP_ARROWCODE, 230);
-                ObjectSetInteger(0, sellName, OBJPROP_COLOR, C'64,0,255');
-            }
-
-            Trade.PositionOpen(_Symbol,ORDER_TYPE_SELL, Lots,entryprice, stoploss, takeprofit, "Sell Test");
+        string sellName = "Sell@" + TimeToString(rates[1].time);
+        if(ObjectCreate(0, sellName, OBJ_ARROW, 0, rates[1].time, rates[1].close)) {
+            ObjectSetInteger(0, sellName, OBJPROP_ARROWCODE, 230);
+            ObjectSetInteger(0, sellName, OBJPROP_COLOR, C'64,0,255');
         }
+
+        Trade.PositionOpen(_Symbol,ORDER_TYPE_SELL, Lots,entryprice, stoploss, takeprofit, "Sell Test");
     }
-    Comment(GetStateText(currentState));
-
-
+    Comment("Current State: " + GetMarketActionStateText(currentState) + ", Time: " + GetTimeStateText(currentTimeState));
 
     // if (currentState == STATE_CHOCH_BEARISH) {
     //     double entryprice = rates[1].close;
