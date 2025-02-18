@@ -71,6 +71,9 @@ string GetStateText(MarketState state) {
 // Current market state
 MarketState currentState = STATE_OUTSIDE_TIME;
 
+double ASIA_High = 0;
+double ASIA_Low = 0;
+
 // Swings
 double Highs[];
 double Lows[];
@@ -292,8 +295,8 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
         tempTime.hour = END_HOUR;
         datetime endTime = StructToTime(tempTime);
 
-        double highestPrice = GetHighestPriceInRange(startTime, endTime);
-        double lowestPrice = GetLowestPriceInRange(startTime, endTime);
+        ASIA_high = GetHighestPriceInRange(startTime, endTime);
+        ASIA_low = GetLowestPriceInRange(startTime, endTime);
 
         if(highestPrice != -1 && lowestPrice != -1) {
             tempTime.hour = LINE_END_HOUR;
@@ -304,11 +307,11 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
             // Create high line
             string highObjName = "DailyHigh_" + time2String;
             string highObjNameDesc = highObjName + "txt";
-            if(ObjectCreate(0, highObjName, OBJ_TREND, 0, endTime, highestPrice, lineEndTime, highestPrice)) {
+            if(ObjectCreate(0, highObjName, OBJ_TREND, 0, endTime, ASIA_high, lineEndTime, ASIA_high)) {
                 ObjectSetInteger(0, highObjName, OBJPROP_COLOR, clrBlack);
                 ObjectSetInteger(0, highObjName, OBJPROP_WIDTH, 2);
                 ObjectSetInteger(0, highObjName, OBJPROP_STYLE, STYLE_SOLID);
-                if(ObjectCreate(0, highObjNameDesc, OBJ_TEXT, 0, endTime, highestPrice)){
+                if(ObjectCreate(0, highObjNameDesc, OBJ_TEXT, 0, endTime, ASIA_high)){
                     ObjectSetString(0, highObjNameDesc, OBJPROP_TEXT, "Asia High");
                     ObjectSetInteger(0, highObjNameDesc, OBJPROP_COLOR, clrBlack);
                 }
@@ -317,17 +320,17 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
             // Create low line
             string lowObjName = "DailyLow_" + time2String;
             string lowObjNameDesc = lowObjName + "txt";
-            if(ObjectCreate(0, lowObjName, OBJ_TREND, 0, endTime, lowestPrice, lineEndTime, lowestPrice)) {
+            if(ObjectCreate(0, lowObjName, OBJ_TREND, 0, endTime, ASIA_low, lineEndTime, ASIA_low)) {
                 ObjectSetInteger(0, lowObjName, OBJPROP_COLOR, clrBlack);
                 ObjectSetInteger(0, lowObjName, OBJPROP_WIDTH, 2);
                 ObjectSetInteger(0, lowObjName, OBJPROP_STYLE, STYLE_SOLID);
-                if(ObjectCreate(0, lowObjNameDesc, OBJ_TEXT, 0, endTime, lowestPrice)){
+                if(ObjectCreate(0, lowObjNameDesc, OBJ_TEXT, 0, endTime, ASIA_low)){
                     ObjectSetString(0, lowObjNameDesc, OBJPROP_TEXT, "Asia Low");
                     ObjectSetInteger(0, lowObjNameDesc, OBJPROP_COLOR, clrBlack);
                 }
             }
             
-            Print("Price range between ", START_HOUR, ":00 and ", END_HOUR, ":00 - High: ", highestPrice, " Low: ", lowestPrice);
+            Print("Price range between ", START_HOUR, ":00 and ", END_HOUR, ":00 - High: ", ASIA_high, " Low: ", ASIA_low);
         }
         // Update the previous date
         previousDateStruct = currentDateStruct;
@@ -355,109 +358,103 @@ void OnTick() {
     
     // Update state based on ChoCh and OrderBlock conditions
     if(currentState == STATE_IN_TIME) {
-        if(Highs[0] >= B_value && rates[1].close > B_value && rates[2].close < B_value)
-            currentState = STATE_CHOCH_BULLISH;
-        else if(rates[1].low < A_value && rates[2].close > A_value)
-            currentState = STATE_CHOCH_BEARISH;
-        else if(isOrderBlockBullish)  // Assuming this variable exists from orderBlock() function
-            currentState = STATE_ORDERBLOCK_BULLISH;
-        else if(isOrderBlockBearish)  // Assuming this variable exists from orderBlock() function
-            currentState = STATE_ORDERBLOCK_BEARISH;
+        if (A_value < ASIA_Low)
+            currentState = STATE_TAKE_LIQUIDITY_A;
+        if (B_value > ASIA_High)
+            currentState = STATE_TAKE_LIQUIDITY_B;
     }
-
-    Comment(GetStateText(currentState));
 
     if (ArraySize(HighsTime) > 0 && ArraySize(LowsTime) > 0 && ArraySize(Highs) > 0 && ArraySize(Lows) > 0) {
-    //CHOCh
-      //Bullish
-      if(Highs[0] >= B_value && rates[1].close > B_value && rates[2].close < B_value) {
-         if(B_time != lastBuTime) {  // Only create if time is different
-            string objname = "SMC ChoCh Bu" + TimeToString(B_time);
-            if(ObjectCreate(0, objname, OBJ_TREND, 0, B_time, B_value, rates[1].time, B_value)) {
-               ObjectSetInteger(0, objname, OBJPROP_COLOR, clrGreen);
-               ObjectSetInteger(0, objname, OBJPROP_WIDTH, 4);
-            }
+        //CHOCh
+        //Bullish
+        if(rates[1].close > B_value && rates[2].close < B_value && B_time != lastBuTime) {
+            if (currentState == STATE_CHOCH_BEARISH)
+                currentState = STATE_CHOCH_BULLISH
             lastBuTime = B_time;
             buValue = B_value;
-         }
-      }
-      //Bearish  
-      if(rates[1].low < A_value && rates[2].close > A_value) {
-         if(A_time != lastBeTime) {  // Only create if time is different
-            string objname = "SMC ChoCh Be" + TimeToString(A_time);
-            if(ObjectCreate(0, objname, OBJ_TREND, 0, A_time, A_value, rates[1].time, A_value)) {
-               ObjectSetInteger(0, objname, OBJPROP_COLOR, clrRed);
-               ObjectSetInteger(0, objname, OBJPROP_WIDTH, 4);
-            }
+        }
+        //Bearish  
+        if(rates[1].low < A_value && rates[2].close > A_value && A_time != lastBeTime) {
+            if (currentState == STATE_TAKE_LIQUIDITY_B)
+                currentState = STATE_CHOCH_BEARISH
             lastBeTime = A_time;
             beValue = A_value;
-         }
-      }
-      
-      if (Highs[0] > B_value){
-         A_time = LowsTime[0];
-         A_value = Lows[0];
-         DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
-         B_time = HighsTime[0];
-         B_value = Highs[0];
-         DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
-      }
-      
-      string BObjName = "B";
-      if(ObjectCreate(0, BObjName, OBJ_TEXT, 0, B_time, B_value)) {
-         ObjectSetString(0, BObjName, OBJPROP_TEXT, BObjName);
-         ObjectSetInteger(0, BObjName, OBJPROP_COLOR, C'64,0,255');
-      }
-      string AObjName = "A";
-      if(ObjectCreate(0, AObjName, OBJ_TEXT, 0, A_time, A_value)) {
-         ObjectSetString(0, AObjName, OBJPROP_TEXT, AObjName);
-         ObjectSetInteger(0, AObjName, OBJPROP_COLOR, C'64,0,255');
-      }
+        }
+
+        if (Highs[0] > B_value){
+            A_time = LowsTime[0];
+            A_value = Lows[0];
+            DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
+            B_time = HighsTime[0];
+            B_value = Highs[0];
+            DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
+        }
+
+        string BObjName = "B";
+        if(ObjectCreate(0, BObjName, OBJ_TEXT, 0, B_time, B_value)) {
+            ObjectSetString(0, BObjName, OBJPROP_TEXT, BObjName);
+            ObjectSetInteger(0, BObjName, OBJPROP_COLOR, C'64,0,255');
+        }
+        string AObjName = "A";
+        if(ObjectCreate(0, AObjName, OBJ_TEXT, 0, A_time, A_value)) {
+            ObjectSetString(0, AObjName, OBJPROP_TEXT, AObjName);
+            ObjectSetInteger(0, AObjName, OBJPROP_COLOR, C'64,0,255');
+        }
+        string bChoch = "B choch" + TimeToString(rates[0].time);
+        if(ObjectCreate(0, bChoch, OBJ_TREND, 0, B_time, B_value, rates[0].time, B_value)) {
+            ObjectSetInteger(0, bChoch, OBJPROP_COLOR, clrGreen);
+            ObjectSetInteger(0, bChoch, OBJPROP_WIDTH, 4);
+        }
+
+        string achoch = "A choch" + TimeToString(rates[0].time);
+        if(ObjectCreate(0, achoch, OBJ_TREND, 0, A_time, A_value, rates[0].time, A_value)) {
+            ObjectSetInteger(0, achoch, OBJPROP_COLOR, clrRed);
+            ObjectSetInteger(0, achoch, OBJPROP_WIDTH, 4);
+        }
     }
 
-    string bChoch = "B choch" + TimeToString(rates[0].time);
-    if(ObjectCreate(0, bChoch, OBJ_TREND, 0, B_time, B_value, rates[0].time, B_value)) {
-        ObjectSetInteger(0, bChoch, OBJPROP_COLOR, clrGreen);
-        ObjectSetInteger(0, bChoch, OBJPROP_WIDTH, 4);
+    if (currentState == STATE_CHOCH_BULLISH){
+        if (isOrderBLockBearish) {
+            double entryprice = rates[1].close;
+            entryprice = NormalizeDouble(entryprice,_Digits);
+
+            double stoploss = Highs[1];
+            stoploss = NormalizeDouble(stoploss,_Digits);
+
+            double riskvalue = stoploss - entryprice;
+            riskvalue = NormalizeDouble(riskvalue,_Digits);
+
+            double takeprofit = entryprice - (risk2reward * riskvalue);
+            takeprofit = NormalizeDouble(takeprofit,_Digits);
+
+            string sellName = "Sell@" + TimeToString(rates[1].time);
+            if(ObjectCreate(0, sellName, OBJ_ARROW, 0, rates[1].time, rates[1].close)) {
+                ObjectSetInteger(0, sellName, OBJPROP_ARROWCODE, 230);
+                ObjectSetInteger(0, sellName, OBJPROP_COLOR, C'64,0,255');
+            }
+
+            Trade.PositionOpen(_Symbol,ORDER_TYPE_SELL, Lots,entryprice, stoploss, takeprofit, "Sell Test");
+        }
     }
+    Comment(GetStateText(currentState));
 
-    string achoch = "A choch" + TimeToString(rates[0].time);
-    if(ObjectCreate(0, achoch, OBJ_TREND, 0, A_time, A_value, rates[0].time, A_value)) {
-        ObjectSetInteger(0, achoch, OBJPROP_COLOR, clrRed);
-        ObjectSetInteger(0, achoch, OBJPROP_WIDTH, 4);
-    }
 
-    if (currentState == STATE_CHOCH_BEARISH) {
-        double entryprice = rates[1].close;
-        entryprice = NormalizeDouble(entryprice,_Digits);
 
-        double stoploss = Lows[1];
-        stoploss = NormalizeDouble(stoploss,_Digits);
+    // if (currentState == STATE_CHOCH_BEARISH) {
+    //     double entryprice = rates[1].close;
+    //     entryprice = NormalizeDouble(entryprice,_Digits);
 
-        double riskvalue = entryprice - stoploss;
-        riskvalue = NormalizeDouble(riskvalue,_Digits);
+    //     double stoploss = Lows[1];
+    //     stoploss = NormalizeDouble(stoploss,_Digits);
 
-        double takeprofit = entryprice + (risk2reward * riskvalue);
-        takeprofit = NormalizeDouble(takeprofit,_Digits);
+    //     double riskvalue = entryprice - stoploss;
+    //     riskvalue = NormalizeDouble(riskvalue,_Digits);
 
-        Trade.PositionOpen(_Symbol,ORDER_TYPE_BUY, Lots,entryprice, stoploss, takeprofit, "Buy Test");
-    }
+    //     double takeprofit = entryprice + (risk2reward * riskvalue);
+    //     takeprofit = NormalizeDouble(takeprofit,_Digits);
 
-    if (currentState == STATE_CHOCH_BULLISH) {
-        double entryprice = rates[1].close;
-        entryprice = NormalizeDouble(entryprice,_Digits);
-
-        double stoploss = Highs[1];
-        stoploss = NormalizeDouble(stoploss,_Digits);
-
-        double riskvalue = stoploss - entryprice;
-        riskvalue = NormalizeDouble(riskvalue,_Digits);
-
-        double takeprofit = entryprice - (risk2reward * riskvalue);
-        takeprofit = NormalizeDouble(takeprofit,_Digits);
-
-        Trade.PositionOpen(_Symbol,ORDER_TYPE_SELL, Lots,entryprice, stoploss, takeprofit, "Sell Test");
-    }
+    //     Trade.PositionOpen(_Symbol,ORDER_TYPE_BUY, Lots,entryprice, stoploss, takeprofit, "Buy Test");
+    // }
 }
 
 void swingPoints() {
