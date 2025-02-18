@@ -1,7 +1,7 @@
 #include <Trade/Trade.mqh>
 CTrade Trade;
 
-input double risk2reward = 2;
+input double risk2reward = 3.5;
 input double Lots = 0.01;
 input int START_HOUR = 00;    // Start time to find price range
 input int END_HOUR = 7;      // End time to find price range
@@ -87,7 +87,7 @@ TimeState currentTimeState = STATE_OUTSIDE_TIME;
 MarketActionState currentState = STATE_NOTHING;
 
 double ASIA_High = 0;
-double ASIA_Low = 0;
+double ASIA_Low = DBL_MAX;
 
 // Swings
 double Highs[];
@@ -114,6 +114,8 @@ double bearishOrderBlockLow[];
 datetime bearishOrderBlockTime[];
 
 MqlDateTime previousDateStruct;
+
+string Mode = "None";
 
 void DrawLine(string name, datetime time1, double price1, datetime time2, double price2) {
    ObjectCreate(0, name, OBJ_TREND, 0, time1, price1, time2, price2);
@@ -368,45 +370,75 @@ void OnTick() {
     swingPoints();
 
     int isOrderBlock = orderBlock();
-    bool isOrderBlockBullish = (isOrderBlock == -1);
-    bool isOrderBlockBearish = (isOrderBlock == 1);
-    
-    // Update state based on ChoCh and OrderBlock conditions
-    if(currentTimeState == STATE_IN_TIME && currentState == STATE_NOTHING) {
-        if (A_value < ASIA_Low)
+
+    if(currentTimeState != STATE_OUTSIDE_TIME && currentState == STATE_NOTHING) {
+        if (A_value < ASIA_Low){
             currentState = STATE_TAKE_LIQUIDITY_A;
-        if (B_value > ASIA_High)
+            Mode = "BUY";
+        }
+        if (B_value > ASIA_High){
             currentState = STATE_TAKE_LIQUIDITY_B;
+            Mode = "SELL";
+        }
     }
-
-    if (currentTimeState == STATE_OUTSIDE_TIME)
+    if (currentTimeState == STATE_OUTSIDE_TIME){
         currentState = STATE_NOTHING;
+        Mode = "None";
+        A_value = DBL_MAX;
+        B_value = 0;
+    }
     
-
     if (ArraySize(HighsTime) > 0 && ArraySize(LowsTime) > 0 && ArraySize(Highs) > 0 && ArraySize(Lows) > 0) {
-        //CHOCh
-        //Bullish
-        if(rates[1].close > B_value && rates[2].close < B_value && B_time != lastBuTime) {
-            if (currentState == STATE_CHOCH_BEARISH)
-                currentState = STATE_CHOCH_BULLISH;
-            lastBuTime = B_time;
-            buValue = B_value;
-        }
-        //Bearish  
-        if(rates[1].low < A_value && rates[2].close > A_value && A_time != lastBeTime) {
-            if (currentState == STATE_TAKE_LIQUIDITY_B || currentState == STATE_CHOCH_BULLISH)
-                currentState = STATE_CHOCH_BEARISH;
-            lastBeTime = A_time;
-            beValue = A_value;
+        if (Mode != "BUY"){
+            //CHoch Bullish
+            if(rates[1].high > B_value && rates[2].close < B_value && B_time != lastBuTime) {
+                if (currentState == STATE_CHOCH_BEARISH)
+                    currentState = STATE_CHOCH_BULLISH;
+                lastBuTime = B_time;
+                buValue = B_value;
+            }
+            //CHoch Bearish  
+            if(rates[1].low < A_value && rates[2].close > A_value && A_time != lastBeTime) {
+                if (currentState == STATE_TAKE_LIQUIDITY_B || currentState == STATE_CHOCH_BULLISH)
+                    currentState = STATE_CHOCH_BEARISH;
+                lastBeTime = A_time;
+                beValue = A_value;
+            }
+
+            if (currentTimeState != STATE_OUTSIDE_TIME && Highs[0] > B_value){
+                A_time = LowsTime[0];
+                A_value = Lows[0];
+                // DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
+                B_time = HighsTime[0];
+                B_value = Highs[0];
+                // DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
+            }
         }
 
-        if (currentTimeState != STATE_OUTSIDE_TIME && Highs[0] > B_value){
-            A_time = LowsTime[0];
-            A_value = Lows[0];
-            // DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
-            B_time = HighsTime[0];
-            B_value = Highs[0];
-            // DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
+        if (Mode != "SELL"){
+            //CHoch Bullish
+            if(rates[1].high > B_value && rates[2].close < B_value && B_time != lastBuTime) {
+                if (currentState == STATE_TAKE_LIQUIDITY_A || currentState == STATE_CHOCH_BEARISH)
+                    currentState = STATE_CHOCH_BULLISH;
+                lastBuTime = B_time;
+                buValue = B_value;
+            }
+            //CHoch Bearish  
+            if(rates[1].low < A_value && rates[2].close > A_value && A_time != lastBeTime) {
+                if (currentState == STATE_CHOCH_BULLISH)
+                    currentState = STATE_CHOCH_BEARISH;
+                lastBeTime = A_time;
+                beValue = A_value;
+            }
+
+            if (currentTimeState != STATE_OUTSIDE_TIME && Lows[0] < A_value){
+                B_time = HighsTime[0];
+                B_value = Highs[0];
+                // DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
+                A_time = LowsTime[0];
+                A_value = Lows[0];
+                // DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
+            }
         }
 
         string BObjName = "B";
@@ -432,7 +464,7 @@ void OnTick() {
         }
     }
 
-    if (currentState == STATE_CHOCH_BULLISH && currentTimeState == STATE_TRADE_TIME && isOrderBlockBearish) {
+    if (Mode == "SELL" && currentState == STATE_CHOCH_BULLISH && currentTimeState == STATE_TRADE_TIME && isOrderBlock == 1) {
         double entryprice = rates[0].open;
         entryprice = NormalizeDouble(entryprice,_Digits);
 
@@ -447,36 +479,35 @@ void OnTick() {
 
         // Attempt to open position
         if (Trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, Lots, entryprice, stoploss, takeprofit, "Sell Test")) {
-            string sellName = "Sell@" + TimeToString(rates[0].time);
-            if(ObjectCreate(0, sellName, OBJ_ARROW, 0, rates[0].time, rates[0].open)) {
-                ObjectSetInteger(0, sellName, OBJPROP_ARROWCODE, 230);
-                ObjectSetInteger(0, sellName, OBJPROP_COLOR, C'64,0,255');
-            }
             Print("Position opened successfully.");
             currentState = STATE_TAKE_LIQUIDITY_B;
-        } else {
-            int errorCode = GetLastError();
-            Print("Failed to open position. Error code: ", errorCode);
-        }
-
+        } else
+            Print("Failed to open position. Error code: ", GetLastError());
     }
-    Comment("Current State: " + GetMarketActionStateText(currentState) + ", Time: " + GetTimeStateText(currentTimeState));
 
-    // if (currentState == STATE_CHOCH_BEARISH) {
-    //     double entryprice = rates[1].close;
-    //     entryprice = NormalizeDouble(entryprice,_Digits);
+    if (Mode == "BUY" && currentState == STATE_CHOCH_BEARISH && currentTimeState == STATE_TRADE_TIME && isOrderBlock == -1) {
+        double entryprice = rates[0].open;
+        entryprice = NormalizeDouble(entryprice,_Digits);
 
-    //     double stoploss = Lows[1];
-    //     stoploss = NormalizeDouble(stoploss,_Digits);
+        double stoploss = MathMin(bearishOrderBlockLow[0], A_value);
+        stoploss = NormalizeDouble(stoploss,_Digits);
 
-    //     double riskvalue = entryprice - stoploss;
-    //     riskvalue = NormalizeDouble(riskvalue,_Digits);
+        double riskvalue = entryprice - stoploss;
+        riskvalue = NormalizeDouble(riskvalue,_Digits);
 
-    //     double takeprofit = entryprice + (risk2reward * riskvalue);
-    //     takeprofit = NormalizeDouble(takeprofit,_Digits);
+        double takeprofit = entryprice + (risk2reward * riskvalue);
+        takeprofit = NormalizeDouble(takeprofit,_Digits);
 
-    //     Trade.PositionOpen(_Symbol,ORDER_TYPE_BUY, Lots,entryprice, stoploss, takeprofit, "Buy Test");
-    // }
+        // Attempt to open position
+        if (Trade.PositionOpen(_Symbol, ORDER_TYPE_BUY, Lots, entryprice, stoploss, takeprofit, "Buy Test")) {
+            Print("Position opened successfully.");
+            currentState = STATE_TAKE_LIQUIDITY_A;
+        } else
+            Print("Failed to open position. Error code: ", GetLastError());
+        
+    }
+
+    Comment("Current State: " + GetMarketActionStateText(currentState) + ", Time: " + GetTimeStateText(currentTimeState) + ", Mode: " + Mode);
 }
 
 void swingPoints() {
