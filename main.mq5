@@ -372,7 +372,7 @@ void OnTick() {
     bool isOrderBlockBearish = (isOrderBlock == 1);
     
     // Update state based on ChoCh and OrderBlock conditions
-    if(currentTimeState == STATE_IN_TIME) {
+    if(currentTimeState == STATE_IN_TIME && currentState == STATE_NOTHING) {
         if (A_value < ASIA_Low)
             currentState = STATE_TAKE_LIQUIDITY_A;
         if (B_value > ASIA_High)
