@@ -394,19 +394,19 @@ void OnTick() {
         }
         //Bearish  
         if(rates[1].low < A_value && rates[2].close > A_value && A_time != lastBeTime) {
-            if (currentState == STATE_TAKE_LIQUIDITY_B)
+            if (currentState == STATE_TAKE_LIQUIDITY_B || currentState == STATE_CHOCH_BULLISH)
                 currentState = STATE_CHOCH_BEARISH;
             lastBeTime = A_time;
             beValue = A_value;
         }
 
-        if (Highs[0] > B_value){
+        if (currentTimeState != STATE_OUTSIDE_TIME && Highs[0] > B_value){
             A_time = LowsTime[0];
             A_value = Lows[0];
-            DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
+            // DrawLine("HighLowLine" + TimeToString(B_time), A_time, A_value, B_time, B_value);
             B_time = HighsTime[0];
             B_value = Highs[0];
-            DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
+            // DrawLine("HighLowLine" + TimeToString(A_time), B_time, B_value, A_time, A_value);
         }
 
         string BObjName = "B";
@@ -433,10 +433,10 @@ void OnTick() {
     }
 
     if (currentState == STATE_CHOCH_BULLISH && currentTimeState == STATE_TRADE_TIME && isOrderBlockBearish) {
-        double entryprice = rates[1].close;
+        double entryprice = rates[0].open;
         entryprice = NormalizeDouble(entryprice,_Digits);
 
-        double stoploss = Highs[1];
+        double stoploss = B_value;
         stoploss = NormalizeDouble(stoploss,_Digits);
 
         double riskvalue = stoploss - entryprice;
@@ -445,13 +445,20 @@ void OnTick() {
         double takeprofit = entryprice - (risk2reward * riskvalue);
         takeprofit = NormalizeDouble(takeprofit,_Digits);
 
-        string sellName = "Sell@" + TimeToString(rates[1].time);
-        if(ObjectCreate(0, sellName, OBJ_ARROW, 0, rates[1].time, rates[1].close)) {
-            ObjectSetInteger(0, sellName, OBJPROP_ARROWCODE, 230);
-            ObjectSetInteger(0, sellName, OBJPROP_COLOR, C'64,0,255');
+        // Attempt to open position
+        if (Trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, Lots, entryprice, stoploss, takeprofit, "Sell Test")) {
+            string sellName = "Sell@" + TimeToString(rates[0].time);
+            if(ObjectCreate(0, sellName, OBJ_ARROW, 0, rates[0].time, rates[0].open)) {
+                ObjectSetInteger(0, sellName, OBJPROP_ARROWCODE, 230);
+                ObjectSetInteger(0, sellName, OBJPROP_COLOR, C'64,0,255');
+            }
+            Print("Position opened successfully.");
+            currentState = STATE_TAKE_LIQUIDITY_B;
+        } else {
+            int errorCode = GetLastError();
+            Print("Failed to open position. Error code: ", errorCode);
         }
 
-        Trade.PositionOpen(_Symbol,ORDER_TYPE_SELL, Lots,entryprice, stoploss, takeprofit, "Sell Test");
     }
     Comment("Current State: " + GetMarketActionStateText(currentState) + ", Time: " + GetTimeStateText(currentTimeState));
 
@@ -529,12 +536,12 @@ void createOrderBlock(int index, color clr, MqlRates &rates[], double &blockHigh
         blockTime[i] = blockTime[i - 1];
     blockTime[0] = blockTimeValue;
 
-    string objName = " Bu.OB " + IntegerToString(index - 1) + TimeToString(rates[index].time);
-    if(ObjectCreate(0, objName, OBJ_RECTANGLE, 0, rates[index].time, rates[index].high, rates[0].time, rates[1].close)){
-        ObjectSetInteger(0, objName, OBJPROP_COLOR, clr);
-        ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID);
-        ObjectSetInteger(0, objName, OBJPROP_WIDTH, 3);
-    }
+    // string objName = " Bu.OB " + IntegerToString(index - 1) + TimeToString(rates[index].time);
+    // if(ObjectCreate(0, objName, OBJ_RECTANGLE, 0, rates[index].time, rates[index].high, rates[0].time, rates[1].close)){
+    //     ObjectSetInteger(0, objName, OBJPROP_COLOR, clr);
+    //     ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID);
+    //     ObjectSetInteger(0, objName, OBJPROP_WIDTH, 3);
+    // }
 }
 
 int orderBlock() {
