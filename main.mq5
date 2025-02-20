@@ -1,11 +1,13 @@
 #include <Trade/Trade.mqh>
 CTrade Trade;
 
+int barsTotal;
+
 input double risk2reward = 3.5;
 input double Lots = 0.01;
-input int START_HOUR = 00;    // Start time to find price range
-input int END_HOUR = 7;      // End time to find price range
-input int LINE_END_HOUR = 10; // End time for drawing the lines
+input int START_HOUR = 2;    // Start time to find price range
+input int END_HOUR = 9;      // End time to find price range
+input int LINE_END_HOUR = 12; // End time for drawing the lines
 input ENUM_TIMEFRAMES InpTimeframe = PERIOD_H1;  // Timeframe
 
 void SetChartAppearance() {
@@ -113,6 +115,11 @@ double bearishOrderBlockHigh[];
 double bearishOrderBlockLow[];
 datetime bearishOrderBlockTime[];
 
+double untouchedHighs[];
+double untouchedLows[];
+datetime untouchedHighsTime[];
+datetime untouchedLowsTime[];
+
 MqlDateTime previousDateStruct;
 
 string Mode = "None";
@@ -122,8 +129,10 @@ void DrawLine(string name, datetime time1, double price1, datetime time2, double
 
    if (price2 > price1)
       ObjectSetInteger(0, name, OBJPROP_COLOR, clrBlue);  // Line color
-   else
+   else if (price1 > price2)
       ObjectSetInteger(0, name, OBJPROP_COLOR, clrRed);  // Line color
+   else
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clrBlack);  // Line color
 
    ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);       // Line thickness
    ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false); // No infinite extension
@@ -177,6 +186,11 @@ int OnInit() {
     ArraySetAsSeries(bearishOrderBlockHigh,true);
     ArraySetAsSeries(bearishOrderBlockLow,true);
     ArraySetAsSeries(bearishOrderBlockTime,true);
+
+    ArraySetAsSeries(untouchedHighs, true);
+    ArraySetAsSeries(untouchedLows, true);
+    ArraySetAsSeries(untouchedHighsTime, true);
+    ArraySetAsSeries(untouchedLowsTime, true);
 
     return(INIT_SUCCEEDED);
 }
@@ -270,7 +284,7 @@ void HighlightTimeRange() {
         currentTimeState = STATE_OUTSIDE_TIME;
 
     string highlightName = "TimeHighlight_main" + "_" + IntegerToString(tempTime.day);  
-    if(ObjectCreate(0, highlightName, OBJ_RECTANGLE, 0, startTime, 1.9, endTime, 1)) {
+    if(ObjectCreate(0, highlightName, OBJ_RECTANGLE, 0, startTime, 1.9, endTime, 0.5)) {
         ObjectSetInteger(0, highlightName, OBJPROP_COLOR, C'225,225,141');
         ObjectSetInteger(0, highlightName, OBJPROP_FILL, true);
         ObjectSetInteger(0, highlightName, OBJPROP_BACK, true);
@@ -279,7 +293,7 @@ void HighlightTimeRange() {
         ObjectSetInteger(0, highlightName, OBJPROP_HIDDEN, true);
     }
     string highlightName1 = "TimeHighlight_1" + "_" + IntegerToString(tempTime.day);  
-    if(ObjectCreate(0, highlightName1, OBJ_RECTANGLE, 0, start1Time, 1.9, end1Time, 1)) {
+    if(ObjectCreate(0, highlightName1, OBJ_RECTANGLE, 0, start1Time, 1.9, end1Time, 0.5)) {
         ObjectSetInteger(0, highlightName1, OBJPROP_COLOR, C'163,177,240');
         ObjectSetInteger(0, highlightName1, OBJPROP_FILL, true);
         ObjectSetInteger(0, highlightName1, OBJPROP_BACK, true);
@@ -288,7 +302,7 @@ void HighlightTimeRange() {
         ObjectSetInteger(0, highlightName1, OBJPROP_HIDDEN, true);
     }
     string highlightName2 = "TimeHighlight_2" + "_" + IntegerToString(tempTime.day);  
-    if(ObjectCreate(0, highlightName2, OBJ_RECTANGLE, 0, start2Time, 1.9, end2Time, 1)) {
+    if(ObjectCreate(0, highlightName2, OBJ_RECTANGLE, 0, start2Time, 1.9, end2Time, 0.5)) {
         ObjectSetInteger(0, highlightName2, OBJPROP_COLOR, C'163,177,240');
         ObjectSetInteger(0, highlightName2, OBJPROP_FILL, true);
         ObjectSetInteger(0, highlightName2, OBJPROP_BACK, true);
@@ -319,10 +333,8 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
             tempTime.hour = LINE_END_HOUR;
             datetime lineEndTime = StructToTime(tempTime);
 
-            string time2String = IntegerToString(currentDateStruct.year) + IntegerToString(currentDateStruct.mon) + IntegerToString(currentDateStruct.day);
-            
             // Create high line
-            string highObjName = "DailyHigh_" + time2String;
+            string highObjName = "DailyHigh_" + IntegerToString(currentDateStruct.year) + IntegerToString(currentDateStruct.mon) + IntegerToString(currentDateStruct.day);
             string highObjNameDesc = highObjName + "txt";
             if(ObjectCreate(0, highObjName, OBJ_TREND, 0, endTime, ASIA_High, lineEndTime, ASIA_High)) {
                 ObjectSetInteger(0, highObjName, OBJPROP_COLOR, clrBlack);
@@ -335,7 +347,7 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
             }
             
             // Create low line
-            string lowObjName = "DailyLow_" + time2String;
+            string lowObjName = "DailyLow_" + IntegerToString(currentDateStruct.year) + IntegerToString(currentDateStruct.mon) + IntegerToString(currentDateStruct.day);
             string lowObjNameDesc = lowObjName + "txt";
             if(ObjectCreate(0, lowObjName, OBJ_TREND, 0, endTime, ASIA_Low, lineEndTime, ASIA_Low)) {
                 ObjectSetInteger(0, lowObjName, OBJPROP_COLOR, clrBlack);
@@ -354,7 +366,59 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
     }
 }
 
+void DrawAndStoreUntouchedHighLowLines() {
+
+    datetime finishTime = TimeCurrent() + 86400; // Add 24 hours (86400 seconds) to get the time of tomorrow
+    MqlRates rates[];
+    ArraySetAsSeries(rates, true);
+    CopyRates(_Symbol, PERIOD_D1, 0, 14, rates);
+
+    for(int i = 1; i < ArraySize(rates); i++) {
+        bool highTouched = false;
+        bool lowTouched = false;
+        for(int j = 1; j <= ArraySize(rates); j++) {
+            if(j >= i) break; // Only check new candles after the day of interest
+            double dayHigh = iHigh(_Symbol, PERIOD_D1, j);
+            double dayLow = iLow(_Symbol, PERIOD_D1, j);
+            if(dayHigh >= rates[i].high) highTouched = true;
+            if(dayLow <= rates[i].low) lowTouched = true;
+        }
+        if(!highTouched) {
+            string highLineName = "HighLine_" + IntegerToString(i);
+            string highLineDesc = "High_" + TimeToString(rates[i].time);
+            ObjectCreate(0, highLineName, OBJ_TREND, 0, rates[i].time, rates[i].high, finishTime, rates[i].high);
+            if(ObjectCreate(0, highLineDesc, OBJ_TEXT, 0, rates[i].time, rates[i].high)){
+                ObjectSetString(0, highLineDesc, OBJPROP_TEXT, highLineDesc);
+                ObjectSetInteger(0, highLineDesc, OBJPROP_COLOR, clrBlack);
+            }
+            ArrayResize(untouchedHighs, ArraySize(untouchedHighs) + 1);
+            ArrayResize(untouchedHighsTime, ArraySize(untouchedHighsTime) + 1);
+            untouchedHighs[ArraySize(untouchedHighs) - 1] = rates[i].high;
+            untouchedHighsTime[ArraySize(untouchedHighsTime) - 1] = rates[i].time;
+        }
+        if(!lowTouched) {
+            Print(i, "   Low");
+            string lowLineName = "LowLine_" + IntegerToString(i);
+            string lowLineDesc = "Low_" + TimeToString(rates[i].time);
+            ObjectCreate(0, lowLineName, OBJ_TREND, 0, rates[i].time, rates[i].low, finishTime, rates[i].low);
+            if(ObjectCreate(0, lowLineDesc, OBJ_TEXT, 0, rates[i].time, rates[i].low)){
+                ObjectSetString(0, lowLineDesc, OBJPROP_TEXT, lowLineDesc);
+                ObjectSetInteger(0, lowLineDesc, OBJPROP_COLOR, clrBlack);
+            }
+            ArrayResize(untouchedLows, ArraySize(untouchedLows) + 1);
+            ArrayResize(untouchedLowsTime, ArraySize(untouchedLowsTime) + 1);
+            untouchedLows[ArraySize(untouchedLows) - 1] = rates[i].low;
+            untouchedLowsTime[ArraySize(untouchedLowsTime) - 1] = rates[i].time;
+        }
+    }
+}
+
 void OnTick() {
+    int bars = iBars(_Symbol, PERIOD_CURRENT);
+
+    if(barsTotal == bars) return;
+    else   barsTotal = bars;
+
     MqlRates rates[];
     ArraySetAsSeries(rates, true);
     CopyRates(_Symbol, PERIOD_CURRENT, 0, 50, rates);
@@ -363,7 +427,10 @@ void OnTick() {
     MqlDateTime currentDateStruct;
     TimeToStruct(currentTime, currentDateStruct);
 
-    if(currentDateStruct.hour == END_HOUR)
+    if(currentDateStruct.hour == 0 && currentDateStruct.min == 0)
+        DrawAndStoreUntouchedHighLowLines();
+
+    if(currentDateStruct.hour == END_HOUR && currentDateStruct.min == 0 )
         CheckAndDrawDailyRange(currentDateStruct);
 
     HighlightTimeRange();
