@@ -367,7 +367,6 @@ void CheckAndDrawDailyRange(MqlDateTime &currentDateStruct) {
 }
 
 void DrawAndStoreUntouchedHighLowLines() {
-
     datetime finishTime = TimeCurrent() + 86400; // Add 24 hours (86400 seconds) to get the time of tomorrow
     MqlRates rates[];
     ArraySetAsSeries(rates, true);
@@ -427,8 +426,8 @@ void OnTick() {
     MqlDateTime currentDateStruct;
     TimeToStruct(currentTime, currentDateStruct);
 
-    if(currentDateStruct.hour == 0 && currentDateStruct.min == 0)
-        DrawAndStoreUntouchedHighLowLines();
+    //if(currentDateStruct.hour == 0 && currentDateStruct.min == 0)
+    //    DrawAndStoreUntouchedHighLowLines();
 
     if(currentDateStruct.hour == END_HOUR && currentDateStruct.min == 0 )
         CheckAndDrawDailyRange(currentDateStruct);
@@ -455,7 +454,7 @@ void OnTick() {
         B_value = 0;
     }
     
-    if (ArraySize(HighsTime) > 0 && ArraySize(LowsTime) > 0 && ArraySize(Highs) > 0 && ArraySize(Lows) > 0) {
+    if (ArraySize(HighsTime) > 0 && ArraySize(LowsTime) > 0 && ArraySize(Highs) > 0 && ArraySize(Lows) > 0 && ArraySize(bullishOrderBlockTime) > 0 && ArraySize(bearishOrderBlockTime) > 0) {
         if (Mode != "BUY"){
             //CHoch Bullish
             if(rates[1].high > B_value && rates[2].close < B_value && B_time != lastBuTime) {
@@ -529,52 +528,55 @@ void OnTick() {
             ObjectSetInteger(0, achoch, OBJPROP_COLOR, clrRed);
             ObjectSetInteger(0, achoch, OBJPROP_WIDTH, 4);
         }
+       
+       bool sellOB = (bullishOrderBlockTime[0] - B_time <= 120) && (bullishOrderBlockTime[0] >= B_time) && (isOrderBlock == 1);
+       if (Mode == "SELL" && currentState == STATE_CHOCH_BULLISH && currentTimeState == STATE_TRADE_TIME  && sellOB) {
+            Print(bullishOrderBlockTime[0], "    " ,B_time, "  ", bullishOrderBlockTime[0] - B_time);
+           double entryprice = rates[0].open;
+           entryprice = NormalizeDouble(entryprice,_Digits);
+   
+           double stoploss = B_value;
+           stoploss = NormalizeDouble(stoploss,_Digits);
+   
+           double riskvalue = stoploss - entryprice;
+           riskvalue = NormalizeDouble(riskvalue,_Digits);
+   
+           double takeprofit = entryprice - (risk2reward * riskvalue);
+           takeprofit = NormalizeDouble(takeprofit,_Digits);
+   
+           // Attempt to open position
+           if (Trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, Lots, entryprice, stoploss, takeprofit, "Sell Test")) {
+               Print("Position opened successfully.");
+               currentState = STATE_TAKE_LIQUIDITY_B;
+           } else
+               Print("Failed to open position. Error code: ", GetLastError());
+       }
+   
+       bool buyOB = (bearishOrderBlockTime[0] - A_time >= 120) && (bearishOrderBlockTime[0] <= A_time) && (isOrderBlock == -1);
+       if (Mode == "BUY" && currentState == STATE_CHOCH_BEARISH && currentTimeState == STATE_TRADE_TIME && buyOB) {
+           double entryprice = rates[0].open;
+           entryprice = NormalizeDouble(entryprice,_Digits);
+   
+           double stoploss = MathMin(bearishOrderBlockLow[0], A_value);
+           stoploss = NormalizeDouble(stoploss,_Digits);
+   
+           double riskvalue = entryprice - stoploss;
+           riskvalue = NormalizeDouble(riskvalue,_Digits);
+   
+           double takeprofit = entryprice + (risk2reward * riskvalue);
+           takeprofit = NormalizeDouble(takeprofit,_Digits);
+   
+           // Attempt to open position
+           if (Trade.PositionOpen(_Symbol, ORDER_TYPE_BUY, Lots, entryprice, stoploss, takeprofit, "Buy Test")) {
+               Print("Position opened successfully.");
+               currentState = STATE_TAKE_LIQUIDITY_A;
+           } else
+               Print("Failed to open position. Error code: ", GetLastError());
+           
+       }
+   
+       Comment("Current State: " + GetMarketActionStateText(currentState) + ", Time: " + GetTimeStateText(currentTimeState) + ", Mode: " + Mode);
     }
-
-    if (Mode == "SELL" && currentState == STATE_CHOCH_BULLISH && currentTimeState == STATE_TRADE_TIME && isOrderBlock == 1) {
-        double entryprice = rates[0].open;
-        entryprice = NormalizeDouble(entryprice,_Digits);
-
-        double stoploss = B_value;
-        stoploss = NormalizeDouble(stoploss,_Digits);
-
-        double riskvalue = stoploss - entryprice;
-        riskvalue = NormalizeDouble(riskvalue,_Digits);
-
-        double takeprofit = entryprice - (risk2reward * riskvalue);
-        takeprofit = NormalizeDouble(takeprofit,_Digits);
-
-        // Attempt to open position
-        if (Trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, Lots, entryprice, stoploss, takeprofit, "Sell Test")) {
-            Print("Position opened successfully.");
-            currentState = STATE_TAKE_LIQUIDITY_B;
-        } else
-            Print("Failed to open position. Error code: ", GetLastError());
-    }
-
-    if (Mode == "BUY" && currentState == STATE_CHOCH_BEARISH && currentTimeState == STATE_TRADE_TIME && isOrderBlock == -1) {
-        double entryprice = rates[0].open;
-        entryprice = NormalizeDouble(entryprice,_Digits);
-
-        double stoploss = MathMin(bearishOrderBlockLow[0], A_value);
-        stoploss = NormalizeDouble(stoploss,_Digits);
-
-        double riskvalue = entryprice - stoploss;
-        riskvalue = NormalizeDouble(riskvalue,_Digits);
-
-        double takeprofit = entryprice + (risk2reward * riskvalue);
-        takeprofit = NormalizeDouble(takeprofit,_Digits);
-
-        // Attempt to open position
-        if (Trade.PositionOpen(_Symbol, ORDER_TYPE_BUY, Lots, entryprice, stoploss, takeprofit, "Buy Test")) {
-            Print("Position opened successfully.");
-            currentState = STATE_TAKE_LIQUIDITY_A;
-        } else
-            Print("Failed to open position. Error code: ", GetLastError());
-        
-    }
-
-    Comment("Current State: " + GetMarketActionStateText(currentState) + ", Time: " + GetTimeStateText(currentTimeState) + ", Mode: " + Mode);
 }
 
 void swingPoints() {
@@ -612,9 +614,9 @@ void swingPoints() {
 }
 
 void createOrderBlock(int index, color clr, MqlRates &rates[], double &blockHigh[], double &blockLow[], datetime &blockTime[]) {
-    double blockHighValue = rates[index].open;
-    double blockLowValue = rates[index].low;
-    datetime blockTimeValue = rates[index].time;
+    double blockHighValue = rates[1].open;
+    double blockLowValue = rates[1].low;
+    datetime blockTimeValue = rates[1].time;
 
     // Shift existing elements in blockHigh[] to make space for the new value
     ArrayResize(blockHigh, ArraySize(blockHigh) + 1);
@@ -634,12 +636,11 @@ void createOrderBlock(int index, color clr, MqlRates &rates[], double &blockHigh
         blockTime[i] = blockTime[i - 1];
     blockTime[0] = blockTimeValue;
 
-    // string objName = " Bu.OB " + IntegerToString(index - 1) + TimeToString(rates[index].time);
-    // if(ObjectCreate(0, objName, OBJ_RECTANGLE, 0, rates[index].time, rates[index].high, rates[0].time, rates[1].close)){
-    //     ObjectSetInteger(0, objName, OBJPROP_COLOR, clr);
-    //     ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID);
-    //     ObjectSetInteger(0, objName, OBJPROP_WIDTH, 3);
-    // }
+    string objName = " Bu.OB " + IntegerToString(index - 1) + TimeToString(rates[index].time);
+    if(ObjectCreate(0, objName, OBJ_RECTANGLE, 0, rates[index].time, rates[index].high, rates[1].time, rates[1].close)){
+        ObjectSetInteger(0, objName, OBJPROP_COLOR, clr);
+        ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID);
+    }
 }
 
 int orderBlock() {
